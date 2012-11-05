@@ -4,6 +4,10 @@
 # author: swcai
 
 import os
+import time
+import smtplib
+import daemon
+from email.mime.text import MIMEText
 
 def run_without_output(cmd):
    os.popen(cmd)
@@ -15,58 +19,80 @@ def run_with_output(cmd):
    return []
 
 
-class git_helper:
-   FIRST_COMMIT='49b8521d4422606b17e21ebd4347823293c579c2'
-   last_commit='009e3a0a7ebb25ec770f3c196fa7869aef829cb6'
+PROJECT_NAME = "TeamEventApp"
+PROJECT_DIR = os.getcwd()
+PROJECT_SRC_DIR = "%s/src/TeamEventApp" % PROJECT_DIR
+PROJECT_LOG_DIR = "%s/log" % PROJECT_DIR
 
+def send_mail(commit, desc, email):
+   msg = MIMEText(''.join(run_with_output('git log -1 %s' % commit)))
+   me = 'stanley.w.cai@intel.com'
+   to_list = ['stanley.w.cai@intel.com', 'yong.hu@intel.com', 'kaining.yuan@intel.com', 'fanjiang.pei@intel.com', 'jun.feng.lu@intel.com', 'qinghui.jian@intel.com', 'shidong.ren@intel.com']
+   msg['subject'] = "New commit for %s project from %s" % (PROJECT_NAME, email)
+   try:
+      s = smtplib.SMTP()
+      s.connect("localhost")
+      s.sendmail(me, to_list, msg.as_string())
+      s.close()
+   except Exception, e:
+      print str(e)
+
+class builder:
+   FIRST_COMMIT='49b8521d4422606b17e21ebd4347823293c579c2'
+   last_commit='d7d93111b56b76e042359d9f129e96ab29aadb6f'
    def init(self):
-      # cmd = 'git fetch origin'
-      # run_without_output(cmd)
-      pass
+      self.fetch()
+
+
+   def fetch(self):
+      cmd = 'git fetch origin'
+      run_without_output(cmd)
 
    def commits_since_lasttime(self):
-      cmd = 'git log origin/master ' + self.last_commit + '.. --format="%H__SPLIT__%B__SPLIT__%ae"'
+      cmd = 'git log origin/master ' + self.last_commit + '.. --format="%H__SPLIT__%s__SPLIT__%ae"'
       self.commits = map(lambda line: line.rstrip().split('__SPLIT__'), run_with_output(cmd))
-      self.last_commit = self.commits[-1][0]
+      if len(self.commits) > 0:
+         self.last_commit = self.commits[0][0]
 
-   def auto_build(self):
+   def build(self, commit):
+      cmd = 'git checkout %s -b tmp' % commit[0]
+      run_without_output(cmd)
+      cmd = 'android update project -p . -n %s' % PROJECT_NAME  
+      run_without_output(cmd)
+      cmd = 'ant debug'
+      run_without_output(cmd)
+      cmd = 'cp bin/%s-debug.apk %s/%s-debug-%s.apk' % (PROJECT_NAME, PROJECT_LOG_DIR, PROJECT_NAME, commit[0])
+      run_without_output(cmd)
+      cmd = 'git checkout master'
+      run_without_output(cmd)
+      cmd = 'git branch -D tmp'
+      run_without_output(cmd)
+
+   def build_and_publish_new_commits(self):
+      pwd = os.getcwd()
+      os.chdir(PROJECT_SRC_DIR)
+      self.fetch()
       self.commits_since_lasttime()
       for commit in self.commits:
-         cmd = 'git checkout %s -b tmp' % commit[0]
-         run_without_output(cmd)
-         cmd = 'android update project -p . -n TeamEventApp'  
-         run_without_output(cmd)
-         cmd = 'ant debug'
-         run_without_output(cmd)
-         cmd = 'cp bin/TeamEventApp-debug.apk ./TeamEventApp-debug-%s.apk' %commit[0]
-         run_without_output(cmd)
-         cmd = 'git checkout master'
-         run_without_output(cmd)
-         cmd = 'git branch -d tmp'
-         run_without_output(cmd)
-         self.pre_publish('TeamEventApp-debug-%s.apk' % commit[0], commit[0], commit[1], commit[2] ) 
-      self.publish()
+         self.build(commit)
+         self.publish('%s-debug-%s.apk' % (PROJECT_NAME, commit[0]), commit[0], commit[1], commit[2] ) 
+         send_mail(*commit)
+      os.chdir(pwd) 
 
-   def pre_publish(self, filename, commit, description, email):
-      cmd = 'cp %s /var/www/' % filename
-      run_without_output(cmd)
-      with open("/var/www/apks.txt", 'a+') as f:
+   def publish(self, filename, commit, description, email):
+      with open("%s/apks.html" % PROJECT_LOG_DIR, 'a+') as f:
          f.write('\n')
-         f.write('<a href="%s">%s</a>' % (filename, filename))
-         f.write('email: %s' % email)
-         f.write('description:\n<pre>%s</pre>' % description)
+         f.write('<li><a href="%s">%s.apk</a></li>' % (filename, PROJECT_NAME))
+         f.write('<li>Email: %s</li>' % email)
+         f.write('<li>Commit: %s</li>' % commit)
+         f.write('<li>Title:\n%s</li>' % description)
 
-   def publish(self):
-      cmd = "cat head.html > apks.html"
-      run_without_output(cmd)
-      cmd = "cat apks.txt >> apks.html"
-      run_without_output(cmd)
-      cmd = "cat tail.html >> apks.html"
-      run_without_output(cmd)
-      
 def main():
-   helper = git_helper()  
-   helper.auto_build()
+   instance = builder()  
+   while True:
+      instance.build_and_publish_new_commits()
+      time.sleep(30)
 
 if __name__ == '__main__':
-   main()
+   with daemon.DaemonContext():
+      main()
