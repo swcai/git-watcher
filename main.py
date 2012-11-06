@@ -16,14 +16,12 @@ def run_without_output(cmd):
 def run_with_output(cmd):
    with os.popen(cmd) as f:
       line = f.readline()
-      while line != '':
+      while line:
          yield line
          line = f.readline()
 
 def send_mail(commit, desc, email):
    msg = MIMEText(''.join(run_with_output('git log -1 %s' % commit)))
-   msg['from'] = config.PROJECT_ADMIN
-   msg['to_list'] = config.PROJECT_TO_LIST
    msg['subject'] = "New commit for %s project from %s" % (config.PROJECT_NAME, email)
    try:
       s = smtplib.SMTP()
@@ -47,7 +45,6 @@ class checker:
    def commits_since_lasttime(self):
       cmd = 'git log origin/master ' + self.last_commit + '.. --format="%H__SPLIT__%s__SPLIT__%ae"'
       self.commits = map(lambda line: line.rstrip().split('__SPLIT__'), run_with_output(cmd))
-      print self.commits
       if len(self.commits) > 0:
          self.last_commit = self.commits[0][0]
 
@@ -67,5 +64,5 @@ def main():
       time.sleep(30)
 
 if __name__ == '__main__':
-   with daemon.DaemonContext():
+   #with daemon.DaemonContext():
       main()
