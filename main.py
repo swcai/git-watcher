@@ -32,8 +32,7 @@ def send_mail(commit, desc, email):
       print str(e)
 
 class checker:
-   FIRST_COMMIT='49b8521d4422606b17e21ebd4347823293c579c2'
-   last_commit='d7d93111b56b76e042359d9f129e96ab29aadb6f'
+   last_commit = ''
 
    def init(self):
       self.fetch()
@@ -52,9 +51,13 @@ class checker:
       pwd = os.getcwd()
       os.chdir(config.PROJECT_SRC_DIR)
       self.fetch()
-      self.commits_since_lasttime()
-      for commit in self.commits:
-         send_mail(*commit)
+      if self.last_commit != '':
+         self.commits_since_lasttime()
+         for commit in self.commits:
+            send_mail(*commit)
+      else:
+         cmd = 'git log -l origin/master --format="%H"'
+         self.last_commit = run_with_output(cmd).next()
       os.chdir(pwd) 
 
 def main():
@@ -64,5 +67,5 @@ def main():
       time.sleep(30)
 
 if __name__ == '__main__':
-   #with daemon.DaemonContext():
+   with daemon.DaemonContext():
       main()
