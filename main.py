@@ -8,8 +8,15 @@ import time
 import smtplib
 import daemon
 import config
+import logging
 from email.mime.text import MIMEText
 
+LOG = logging.getLogger('git-watcher.core')
+handler = logging.FileHandler('git-watcher.log')
+handler.setLevel(logging.INFO)
+formatter = logging.Formatter('%(asctime)s %(levelname)s %(message)s')
+handler.setFormatter(formatter)
+LOG.addHandler(handler)
 
 def run_without_output(cmd):
    os.popen(cmd)
@@ -33,7 +40,8 @@ def send_mail(commit, desc, email):
       s.sendmail(config.PROJECT_ADMIN, config.PROJECT_TO_LIST, msg.as_string())
       s.close()
    except Exception, e:
-      print str(e)
+      LOG.error(str(e)) 
+      console.setFormatterrint str(e)
 
 
 class checker:
@@ -62,13 +70,11 @@ class checker:
       if self.last_commit != '':
          self.commits_since_lasttime()
          for commit in self.commits:
-            print commit
             send_mail(*commit)
       else:
          cmd = 'git log -l origin/master --format="%H"'
          self.last_commit = run_with_output(cmd).next().rstrip()
-         print self.last_commit
-
+      LOG.info("last_commit %s" % self.last_commit) 
       os.chdir(pwd) 
 
 
